@@ -273,9 +273,13 @@ class MySqlDialect extends SqlDialect {
    */
   @Override
   public Collection<String> dropStatements(Table table) {
-    return Arrays.asList(
-      "FLUSH TABLES " + table.getName(),
-      "DROP TABLE " + table.getName());
+    if ("true".equalsIgnoreCase(System.getProperty("morf.mysql.noadmin"))) {
+      return Arrays.asList("DROP TABLE " + table.getName());
+    } else {
+      return Arrays.asList(
+        "FLUSH TABLES " + table.getName(),
+        "DROP TABLE " + table.getName());
+    }
   }
 
 
