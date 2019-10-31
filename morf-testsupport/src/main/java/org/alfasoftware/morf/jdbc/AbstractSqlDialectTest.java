@@ -43,9 +43,11 @@ import static org.alfasoftware.morf.sql.element.Criterion.and;
 import static org.alfasoftware.morf.sql.element.Function.average;
 import static org.alfasoftware.morf.sql.element.Function.count;
 import static org.alfasoftware.morf.sql.element.Function.daysBetween;
+import static org.alfasoftware.morf.sql.element.Function.every;
 import static org.alfasoftware.morf.sql.element.Function.max;
 import static org.alfasoftware.morf.sql.element.Function.min;
 import static org.alfasoftware.morf.sql.element.Function.random;
+import static org.alfasoftware.morf.sql.element.Function.some;
 import static org.alfasoftware.morf.sql.element.Function.sum;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -138,7 +140,7 @@ import com.google.common.collect.Lists;
  */
 public abstract class AbstractSqlDialectTest {
 
-  private static final String TEST_TABLE = "Test";
+  protected static final String TEST_TABLE = "Test";
   private static final String ALTERNATE_TABLE = "Alternate";
   private static final String OTHER_TABLE = "Other";
   private static final String UPPER_TABLE = "UPPER";
@@ -1322,6 +1324,26 @@ public abstract class AbstractSqlDialectTest {
 
 
   /**
+   * Tests select statement with Some function.
+   */
+  @Test
+  public void testSelectSome() {
+    SelectStatement statement = select(some(field(BOOLEAN_FIELD))).from(tableRef(TEST_TABLE));
+    assertEquals("Select scripts are not the same", expectedSelectSome(), testDialect.convertStatementToSQL(statement));
+  }
+
+
+  /**
+  * Tests select statement with Every function.
+  */
+ @Test
+ public void testSelectEvery() {
+   SelectStatement statement = select(every(field(BOOLEAN_FIELD))).from(tableRef(TEST_TABLE));
+   assertEquals("Select scripts are not the same", expectedSelectEvery(), testDialect.convertStatementToSQL(statement));
+ }
+
+
+  /**
    * Tests select statement with SUM function using more than a simple field.
    */
   @Test
@@ -1646,7 +1668,7 @@ public abstract class AbstractSqlDialectTest {
           new FieldReference(FLOAT_FIELD))
           .from(sourceStmt);
 
-    String expectedSql = "INSERT INTO " + tableName(OTHER_TABLE) + " (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM MYSCHEMA.Test";
+    String expectedSql = "INSERT INTO " + tableName(OTHER_TABLE) + " (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM " + differentSchemaTableName(TEST_TABLE);
 
     List<String> sql = testDialect.convertStatementToSQL(stmt, metadata, SqlDialect.IdTable.withDeterministicName("idvalues"));
     assertEquals("Insert with explicit field lists", ImmutableList.of(expectedSql), sql);
@@ -1676,7 +1698,7 @@ public abstract class AbstractSqlDialectTest {
           new FieldReference(FLOAT_FIELD))
           .from(sourceStmt);
 
-    String expectedSql = "INSERT INTO " + tableName(OTHER_TABLE) + " (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM MYSCHEMA.Test INNER JOIN MYSCHEMA.Alternate ON (Test.stringField = Alternate.stringField)";
+    String expectedSql = "INSERT INTO " + tableName(OTHER_TABLE) + " (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM " + differentSchemaTableName(TEST_TABLE) + " INNER JOIN " + differentSchemaTableName(ALTERNATE_TABLE) + " ON (Test.stringField = Alternate.stringField)";
 
     List<String> sql = testDialect.convertStatementToSQL(stmt, metadata, SqlDialect.IdTable.withDeterministicName("idvalues"));
     assertEquals("Insert with explicit field lists", ImmutableList.of(expectedSql), sql);
@@ -1703,7 +1725,7 @@ public abstract class AbstractSqlDialectTest {
           new FieldReference(FLOAT_FIELD))
           .from(sourceStmt);
 
-    String expectedSql = "INSERT INTO MYSCHEMA.Other (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM " + tableName(TEST_TABLE);
+    String expectedSql = "INSERT INTO " + differentSchemaTableName(OTHER_TABLE) + " (id, version, stringField, intField, floatField) SELECT id, version, stringField, intField, floatField FROM " + tableName(TEST_TABLE);
 
     List<String> sql = testDialect.convertStatementToSQL(stmt, metadata, SqlDialect.IdTable.withDeterministicName("idvalues"));
     assertEquals("Insert with explicit field lists", ImmutableList.of(expectedSql), sql);
@@ -1937,12 +1959,60 @@ public abstract class AbstractSqlDialectTest {
 
 
   /**
+   * Tests that a delete string with a limit and a simple where criterion is created correctly.
+   */
+  @Test
+  public void testDeleteWithLimitAndSimpleWhereCriterion() {
+    DeleteStatement stmt = DeleteStatement
+      .delete(new TableReference(TEST_TABLE))
+      .where(Criterion.eq(new FieldReference(new TableReference(TEST_TABLE), STRING_FIELD), "A001003657"))
+      .limit(1000)
+      .build();
+
+    String value = varCharCast("'A001003657'");
+    assertEquals("Delete with simple where clause and limit", expectedDeleteWithLimitAndWhere(value), testDialect.convertStatementToSQL(stmt));
+  }
+
+
+  /**
+   * Tests that a delete string with a limit and a complex where criterion (involving an 'OR') is created correctly (i.e. brackets around the 'OR' are preserved).
+   */
+  @Test
+  public void testDeleteWithLimitAndComplexWhereCriterion() {
+    DeleteStatement stmt = DeleteStatement
+      .delete(new TableReference(TEST_TABLE))
+      .where(Criterion.or(Criterion.eq(new FieldReference(new TableReference(TEST_TABLE), STRING_FIELD), "A001003657"),
+        Criterion.eq(new FieldReference(new TableReference(TEST_TABLE), STRING_FIELD), "A001003658")))
+      .limit(1000)
+      .build();
+
+    String value1 = varCharCast("'A001003657'");
+    String value2 = varCharCast("'A001003658'");
+    assertEquals("Delete with 'OR' where clause and limit - NB do not alter brackets incautiously", expectedDeleteWithLimitAndComplexWhere(value1, value2), testDialect.convertStatementToSQL(stmt));
+  }
+
+
+  /**
+   * Tests that a delete string with a limit and no where criterion is created correctly.
+   */
+  @Test
+  public void testDeleteWithLimitWithoutWhereCriterion() {
+    DeleteStatement stmt = DeleteStatement
+      .delete(new TableReference(TEST_TABLE))
+      .limit(1000)
+      .build();
+
+    assertEquals("Delete with limit", expectedDeleteWithLimitWithoutWhere(), testDialect.convertStatementToSQL(stmt));
+  }
+
+
+  /**
    * Tests that a delete statement is prefixed with the schema name if the schema is specified.
    */
   @Test
   public void testDeleteWithTableInDifferentSchema() {
     DeleteStatement stmt = new DeleteStatement(new TableReference("MYSCHEMA", TEST_TABLE));
-    String expectedSql = "DELETE FROM MYSCHEMA.Test";
+    String expectedSql = "DELETE FROM " + differentSchemaTableName(TEST_TABLE);
     assertEquals("Simple delete", expectedSql, testDialect.convertStatementToSQL(stmt));
   }
 
@@ -1983,21 +2053,9 @@ public abstract class AbstractSqlDialectTest {
         field("field7").eq("Value"),
         field("field8").eq(literal("Value"))
       ));
-    String value = varCharCast("'Value'");
     assertEquals(
       "Update with literal values",
-      String.format(
-        "UPDATE %s SET stringField = %s%s WHERE ((field1 = 1) AND (field2 = 0) AND (field3 = 1) AND (field4 = 0) AND (field5 = %s) AND (field6 = %s) AND (field7 = %s%s) AND (field8 = %s%s))",
-        tableName(TEST_TABLE),
-        stringLiteralPrefix(),
-        value,
-        expectedDateLiteral(),
-        expectedDateLiteral(),
-        stringLiteralPrefix(),
-        value,
-        stringLiteralPrefix(),
-        value
-      ),
+      expectedUpdateWithLiteralValues(),
       testDialect.convertStatementToSQL(stmt)
     );
   }
@@ -2984,6 +3042,14 @@ public abstract class AbstractSqlDialectTest {
         .withParallelQueryPlan()
       )
     );
+    assertEquals(
+      expectedHints3(),
+      testDialect.convertStatementToSQL(
+        update(tableRef("Foo"))
+        .set(field("b").as("a"))
+        .useParallelDml()
+      )
+    );
   }
 
 
@@ -3441,6 +3507,15 @@ public abstract class AbstractSqlDialectTest {
   @Test
   public void testAlterColumnRenamingAndChangingNullability() {
     testAlterTableColumn(OTHER_TABLE, AlterationType.ALTER, getColumn(OTHER_TABLE, FLOAT_FIELD), column("blahField", DataType.DECIMAL, 20, 3).nullable(), expectedAlterColumnRenamingAndChangingNullability());
+  }
+
+
+  /**
+   * Test renaming a column, changing the case only (e.g. from columnName to ColumnName).
+   */
+  @Test
+  public void testAlterColumnChangingTypeAndCase() {
+    testAlterTableColumn(OTHER_TABLE, AlterationType.ALTER, getColumn(OTHER_TABLE, FLOAT_FIELD), column("FloatField", DataType.DECIMAL, 20, 3), expectedAlterColumnChangingLengthAndCase());
   }
 
 
@@ -3976,6 +4051,12 @@ public abstract class AbstractSqlDialectTest {
 
 
   /**
+   * @return Expected SQL for {@link #testAlterColumnChangingTypeAndCase()}.
+   */
+  protected abstract List<String> expectedAlterColumnChangingLengthAndCase();
+
+
+  /**
    * @return Expected SQL for {@link #testAddColumnWithDefault()}
    */
   protected abstract List<String> expectedAlterTableAddColumnWithDefaultStatement();
@@ -4069,6 +4150,36 @@ public abstract class AbstractSqlDialectTest {
    * @return Expected SQL for {@link #testAlterPrimaryKeyColumn()}
    */
   protected abstract List<String> expectedAlterPrimaryKeyColumnStatements();
+
+
+  /**
+   * Expected outcome for calling {@link callPrepareStatementParameter} with a blob data type in {@link #testPrepareStatementParameter()}
+   * @throws SQLException
+   */
+  protected void verifyBlobColumnCallPrepareStatementParameter(SqlParameter blobColumn) throws SQLException {
+    verify(callPrepareStatementParameter(blobColumn, null)).setBlob(Mockito.eq(blobColumn), Mockito.argThat(new ByteArrayMatcher(new byte[] {})));
+    verify(callPrepareStatementParameter(blobColumn, "QUJD")).setBlob(Mockito.eq(blobColumn), Mockito.argThat(new ByteArrayMatcher(new byte[] {65 , 66 , 67})));
+  }
+
+
+  /**
+   * @return Expected SQL for {@link #testUpdateWithLiteralValues()}
+   */
+  protected String expectedUpdateWithLiteralValues() {
+    String value = varCharCast("'Value'");
+    return String.format(
+        "UPDATE %s SET stringField = %s%s WHERE ((field1 = 1) AND (field2 = 0) AND (field3 = 1) AND (field4 = 0) AND (field5 = %s) AND (field6 = %s) AND (field7 = %s%s) AND (field8 = %s%s))",
+        tableName(TEST_TABLE),
+        stringLiteralPrefix(),
+        value,
+        expectedDateLiteral(),
+        expectedDateLiteral(),
+        stringLiteralPrefix(),
+        value,
+        stringLiteralPrefix(),
+        value
+      );
+  }
 
 
   /**
@@ -4235,8 +4346,7 @@ public abstract class AbstractSqlDialectTest {
     assertEquals("Big integer not correctly set on statement", 345345423234234234L, bigIntCapture.getValue().longValue());
 
     // Blob
-    verify(callPrepareStatementParameter(blobColumn, null)).setBlob(Mockito.eq(blobColumn), Mockito.argThat(new ByteArrayMatcher(new byte[] {})));
-    verify(callPrepareStatementParameter(blobColumn, "QUJD")).setBlob(Mockito.eq(blobColumn), Mockito.argThat(new ByteArrayMatcher(new byte[] {65 , 66 , 67})));
+    verifyBlobColumnCallPrepareStatementParameter(blobColumn);
 
     // Clob
     verify(callPrepareStatementParameter(clobColumn, null)).setString(clobColumn, null);
@@ -4354,6 +4464,17 @@ public abstract class AbstractSqlDialectTest {
    */
   protected String tableName(String baseName) {
     return baseName;
+  }
+
+
+  /**
+   * For tests using tables from different schema values.
+   *
+   * @param baseName Base table name.
+   * @return Decorated name.
+   */
+  protected String differentSchemaTableName(String baseName) {
+   return "MYSCHEMA." + baseName;
   }
 
 
@@ -4743,7 +4864,7 @@ public abstract class AbstractSqlDialectTest {
    * @return The expected SQL for performing an update with a destination table which lives in a different schema.
    */
   protected String expectedUpdateUsingTargetTableInDifferentSchema() {
-    return "UPDATE MYSCHEMA.FloatingRateRate A SET settlementFrequency = (SELECT settlementFrequency FROM " + tableName("FloatingRateDetail") + " B WHERE (A.floatingRateDetailId = B.id))";
+    return "UPDATE " + differentSchemaTableName("FloatingRateRate") + " A SET settlementFrequency = (SELECT settlementFrequency FROM " + tableName("FloatingRateDetail") + " B WHERE (A.floatingRateDetailId = B.id))";
   }
 
 
@@ -4862,6 +4983,22 @@ public abstract class AbstractSqlDialectTest {
 
 
   /**
+   * @return
+   */
+  protected String expectedSelectSome() {
+    return "SELECT MAX(booleanField) FROM " + tableName(TEST_TABLE);
+  };
+
+
+  /**
+   * @return
+   */
+  protected String expectedSelectEvery() {
+    return "SELECT MIN(booleanField) FROM " + tableName(TEST_TABLE);
+  };
+
+
+  /**
    * @return The expected SQL for the LOWER function.
    */
   protected String expectedLower() {
@@ -4894,6 +5031,24 @@ public abstract class AbstractSqlDialectTest {
 
 
   /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  protected abstract String expectedDeleteWithLimitAndWhere(String value);
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  protected abstract String expectedDeleteWithLimitAndComplexWhere(String value, String value2);
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  protected abstract String expectedDeleteWithLimitWithoutWhere();
+
+
+  /**
    * @param rowCount The number of rows for which to optimise the query plan.
    * @return The expected SQL for the {@link SelectStatement#optimiseForRowCount(int)} directive.
    */
@@ -4905,6 +5060,14 @@ public abstract class AbstractSqlDialectTest {
    */
   protected String expectedHints2(@SuppressWarnings("unused") int rowCount) {
     return "SELECT a, b FROM " + tableName("Foo") + " ORDER BY a FOR UPDATE";
+  }
+
+
+  /**
+   * @return The expected SQL for the {@link UpdateStatement#useParallelDml()} directive.
+   */
+  protected String expectedHints3() {
+    return "UPDATE " + tableName("Foo") + " SET a = b";
   }
 
 

@@ -25,6 +25,14 @@ import org.joda.time.LocalDate;
  */
 class StatementParametersBuilderImpl extends DataValueLookupBuilderImpl implements StatementParametersBuilder {
 
+  StatementParametersBuilderImpl() {
+    super();
+  }
+
+  StatementParametersBuilderImpl(DataValueLookupBuilderImpl copyFrom, int capacity) {
+    super(copyFrom, capacity);
+  }
+
   @Override
   public StatementParametersBuilder withInitialColumnCount(int count) {
     return (StatementParametersBuilder) super.withInitialColumnCount(count);

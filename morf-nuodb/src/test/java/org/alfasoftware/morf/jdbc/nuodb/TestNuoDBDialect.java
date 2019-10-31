@@ -1039,6 +1039,16 @@ public class TestNuoDBDialect extends AbstractSqlDialectTest {
 
 
   /**
+   * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#expectedAlterColumnChangingLengthAndCase()
+   */
+  @Override
+  protected List<String> expectedAlterColumnChangingLengthAndCase() {
+    return Arrays.asList("ALTER TABLE SCM.Other RENAME COLUMN floatField TO FloatField",
+      "ALTER TABLE SCM.Other ALTER COLUMN FloatField TYPE DECIMAL(20,3)");
+  }
+
+
+  /**
    * It is only necessary to cast for HSQLDB. Returns the value without casting.
    *
    * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#varCharCast(java.lang.String)
@@ -1392,5 +1402,32 @@ public class TestNuoDBDialect extends AbstractSqlDialectTest {
   @Override
   protected Collection<String> expectedAnalyseTableSql() {
     return SqlDialect.NO_STATEMENTS;
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndWhere(String value) {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " WHERE (Test.stringField = " + stringLiteralPrefix() + value + ") LIMIT 1000";
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndComplexWhere(String value1, String value2) {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " WHERE ((Test.stringField = " + stringLiteralPrefix() + value1 + ") OR (Test.stringField = " + stringLiteralPrefix() + value2 + ")) LIMIT 1000";
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitWithoutWhere() {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " LIMIT 1000";
   }
 }

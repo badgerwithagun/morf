@@ -1,9 +1,9 @@
 *.jar
 target
-.project
-.settings
+**/.project
+**/.settings
 .svn
-.classpath
+**/.classpath
 .fbExcludeFilterFile
 .checkstyle
 /build.xml
@@ -13,3 +13,4 @@ target
 */bin/*
 *.iml
 .idea
+**/ivy-ide-settings.properties

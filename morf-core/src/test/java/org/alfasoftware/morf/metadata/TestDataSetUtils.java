@@ -2,16 +2,25 @@ package org.alfasoftware.morf.metadata;
 
 import static org.alfasoftware.morf.metadata.DataSetUtils.record;
 import static org.alfasoftware.morf.metadata.SchemaUtils.column;
+import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.equalTo;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertTrue;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.sql.Date;
 
 import org.alfasoftware.morf.dataset.BaseRecordMatcher;
+import org.alfasoftware.morf.dataset.Record;
 import org.alfasoftware.morf.metadata.DataSetUtils.RecordBuilder;
 import org.alfasoftware.morf.metadata.DataSetUtils.RecordDecorator;
 import org.apache.commons.codec.binary.Base64;
@@ -68,6 +77,49 @@ public class TestDataSetUtils {
       .setObject(LONG_COLUMN, LONG)
       .setObject(BLOB_COLUMN, BYTE_ARRAY)
       .setObject(UNTYPED_COLUMN, VALUE);
+
+
+  @Test
+  public void testValues() {
+    assertThat(
+      BASE_RECORD.getValues(),
+      containsInAnyOrder(
+        new DataValueBean(LOCAL_DATE_COLUMN, LOCAL_DATE),
+        new DataValueBean(LONG_COLUMN, LONG),
+        new DataValueBean(BLOB_COLUMN.toLowerCase(), BYTE_ARRAY), // Ensure equals is type insensitive
+        new DataValueBean(UNTYPED_COLUMN, VALUE),
+        new DataValueBean(INTEGER_COLUMN, INTEGER),
+        new DataValueBean(STRING_COLUMN, STRING),
+        new DataValueBean(BIG_DECIMAL_COLUMN, BIG_DECIMAL),
+        new DataValueBean(BOOLEAN_COLUMN, BOOLEAN),
+        new DataValueBean(DATE_COLUMN, DATE)
+      )
+    );
+  }
+
+
+  @Test
+  public void testValuesDecorator() {
+    assertThat(
+      RecordDecorator.of( // Nested decorators
+          RecordDecorator.of(BASE_RECORD)
+              .setString(STRING_COLUMN.toLowerCase(), "Overriden") // Ensure overriding honours case insensitivity
+              .setBoolean(BOOLEAN_COLUMN, !BOOLEAN))
+                  .setLong(LONG_COLUMN, 125123L)
+                  .getValues(),
+      containsInAnyOrder(
+        new DataValueBean(BIG_DECIMAL_COLUMN, BIG_DECIMAL),
+        new DataValueBean(BOOLEAN_COLUMN, !BOOLEAN),
+        new DataValueBean(DATE_COLUMN, DATE),
+        new DataValueBean(LOCAL_DATE_COLUMN, LOCAL_DATE),
+        new DataValueBean(INTEGER_COLUMN, INTEGER),
+        new DataValueBean(STRING_COLUMN, "Overriden"),
+        new DataValueBean(LONG_COLUMN, 125123L),
+        new DataValueBean(BLOB_COLUMN, BYTE_ARRAY),
+        new DataValueBean(UNTYPED_COLUMN, VALUE)
+      )
+    );
+  }
 
 
   /**
@@ -201,6 +253,36 @@ public class TestDataSetUtils {
 
 
   /**
+   * Check that a zero capacity decorator is permitted.
+   */
+  @Test
+  public void testIdentityDecoratorWithZeroCapacity() {
+    assertThat(
+      RecordDecorator.ofWithInitialCapacity(BASE_RECORD, 0),
+      originalMatcher()
+    );
+  }
+
+
+  /**
+   * Check that array resizing of decorators works.
+   */
+  @Test
+  public void testDecoratorExpansion() {
+    assertThat(
+      RecordDecorator.ofWithInitialCapacity(BASE_RECORD, 1)
+        .setString("additional1", "TEST1")
+        .setString("additional2", "TEST2")
+        .setString("additional3", "TEST3"),
+      originalMatcher()
+        .withValue("additional1", "TEST1")
+        .withValue("ADDITIONAL2", "TEST2")
+        .withValue("Additional3", "TEST3")
+    );
+  }
+
+
+  /**
    * Ensures that we do indeed get null when there is no value.
    */
   @Test
@@ -295,6 +377,58 @@ public class TestDataSetUtils {
     assertEquals("B", record().setString("a", null).value("a", "B").getString("a"));
   }
 
+
+  /**
+   * Ensures that internment works correctly when serialization comes into play,
+   * with the resulting objects showing equivalence.
+   */
+  @Test
+  public void testSerializationDeserialization() throws IOException, ClassNotFoundException {
+    Record copy = serializeAndDeserialize(BASE_RECORD);
+    assertThat(copy, equalTo(BASE_RECORD));
+  }
+
+
+  /**
+   * Ensures that metadata is correctly interned after deserialization.
+   */
+  @Test
+  public void testInternedMetadataAfterDeserialization() throws ClassNotFoundException, IOException {
+
+    RecordBuilderImpl original = (RecordBuilderImpl) record()
+        .setString("one", "1")
+        .setString("two", "2")
+        .setString("three", "3");
+
+    RecordBuilderImpl copy = (RecordBuilderImpl) serializeAndDeserialize(original);
+
+    // Extend the original
+    original.setString("four", "4");
+
+    // We'll get an NPE here if readResolve isn't implemented on DataValueLookupMetadata
+    // The result should share the metadata with original
+    copy.setString("four", "4");
+
+    assertThat(copy, equalTo(original));
+
+    // This will fail if we've not correctly interned the metadata object (e.g.
+    // we've cheated and created a coherent copy)
+    assertTrue(original.hasSameMetadata(copy));
+
+  }
+
+
+  private RecordBuilder serializeAndDeserialize(RecordBuilder record) throws IOException, ClassNotFoundException {
+    try (ByteArrayOutputStream bao = new ByteArrayOutputStream();
+         ObjectOutputStream oo = new ObjectOutputStream(bao)) {
+      oo.writeObject(record);
+      oo.flush();
+      try (ByteArrayInputStream bai = new ByteArrayInputStream(bao.toByteArray());
+           ObjectInputStream oi = new ObjectInputStream(bai)) {
+        return (RecordBuilder) oi.readObject();
+      }
+    }
+  }
 
   private BaseRecordMatcher originalMatcher() {
     return BaseRecordMatcher.create()

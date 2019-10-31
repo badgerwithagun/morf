@@ -1011,6 +1011,16 @@ public class TestOracleDialect extends AbstractSqlDialectTest {
 
 
   /**
+   * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#expectedAlterColumnChangingLengthAndCase()
+   */
+  @Override
+  protected List<String> expectedAlterColumnChangingLengthAndCase() {
+    return Arrays.asList("ALTER TABLE TESTSCHEMA.Other MODIFY (FloatField DECIMAL(20,3))",
+      "COMMENT ON COLUMN TESTSCHEMA.Other.FloatField IS 'REALNAME:[FloatField]/TYPE:[DECIMAL]'");
+  }
+
+
+  /**
    * It is only necessary to cast for HSQLDB. Returns the value without casting.
    *
    * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#varCharCast(java.lang.String)
@@ -1412,6 +1422,14 @@ public class TestOracleDialect extends AbstractSqlDialectTest {
 
 
   /**
+   * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#expectedHints3
+   */
+  @Override
+  protected String expectedHints3() {
+    return "UPDATE /*+ ENABLE_PARALLEL_DML PARALLEL */ " + tableName("Foo") + " SET a = b";
+  }
+
+  /**
    * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#supportsWindowFunctions()
    */
   @Override
@@ -1431,5 +1449,32 @@ public class TestOracleDialect extends AbstractSqlDialectTest {
   @Override
   protected String nullOrderForDirection(Direction descending) {
     return ASCENDING.equals(descending) ? nullOrder() : NULLS_LAST;
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndWhere(String value) {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " WHERE (Test.stringField = " + stringLiteralPrefix() + value + ") AND ROWNUM <= 1000";
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndComplexWhere(String value1, String value2) {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " WHERE ((Test.stringField = " + stringLiteralPrefix() + value1 + ") OR (Test.stringField = " + stringLiteralPrefix() + value2 + ")) AND ROWNUM <= 1000";
+  }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitWithoutWhere() {
+    return "DELETE FROM " + tableName(TEST_TABLE) + " WHERE ROWNUM <= 1000";
   }
 }

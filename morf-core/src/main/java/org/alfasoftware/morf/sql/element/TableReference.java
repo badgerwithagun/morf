@@ -47,6 +47,10 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
    */
   private String alias;
 
+  /**
+   * If set to true defines the table as a temporary table.
+   */
+  private final boolean temporary;
 
   /**
    * Constructor used to create the deep copy
@@ -57,6 +61,7 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
     this.name = sourceTable.name;
     this.alias = alias;
     this.schemaName = sourceTable.schemaName;
+    this.temporary = sourceTable.temporary;
   }
 
   /**
@@ -68,6 +73,7 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
     this.name = name;
     this.alias = "";
     this.schemaName = null;
+    this.temporary = false;
   }
 
 
@@ -82,6 +88,22 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
     this.name = tableName;
     this.schemaName = schemaName;
     this.alias = "";
+    this.temporary = false;
+  }
+
+
+  /**
+   * Constructs a new table with a given name.
+   * Specifies whether the table is temporary.
+   *
+   * @param tableName The table name
+   * @param temporary true if the table is temporary.
+   */
+  public TableReference(String tableName, boolean temporary) {
+    this.name = tableName;
+    this.schemaName = null;
+    this.alias = "";
+    this.temporary = temporary;
   }
 
 
@@ -132,6 +154,16 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
 
 
   /**
+   * Indicates whether the table is temporary.
+   *
+   * @return true if the table is a temporary table.
+   */
+  public boolean isTemporary() {
+    return temporary;
+  }
+
+
+  /**
    * @param name the name to set
    * @deprecated Do not modify {@link TableReference} instances. This will be removed very soon.
    */
@@ -166,6 +198,7 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
   @Override
   public String toString() {
     StringBuilder result = new StringBuilder();
+    if(isTemporary()) result.append("/*Temporary table*/ ");
     if (!StringUtils.isEmpty(schemaName)) result.append(schemaName).append(".");
     result.append(name);
     if (!StringUtils.isEmpty(alias)) result.append(" ").append(alias);
@@ -199,6 +232,7 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
         .append(schemaName, rhs.schemaName)
         .append(name, rhs.name)
         .append(alias, rhs.alias)
+        .append(temporary, rhs.temporary)
         .isEquals();
   }
 
@@ -212,6 +246,7 @@ public class TableReference implements DeepCopyableWithTransformation<TableRefer
         .append(schemaName)
         .append(name)
         .append(alias)
+        .append(temporary)
         .toHashCode();
   }
 }

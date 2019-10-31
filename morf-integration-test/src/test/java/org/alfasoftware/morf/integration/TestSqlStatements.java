@@ -24,6 +24,7 @@ import static org.alfasoftware.morf.metadata.SchemaUtils.column;
 import static org.alfasoftware.morf.metadata.SchemaUtils.index;
 import static org.alfasoftware.morf.metadata.SchemaUtils.schema;
 import static org.alfasoftware.morf.metadata.SchemaUtils.table;
+import static org.alfasoftware.morf.sql.SqlUtils.cast;
 import static org.alfasoftware.morf.sql.SqlUtils.concat;
 import static org.alfasoftware.morf.sql.SqlUtils.field;
 import static org.alfasoftware.morf.sql.SqlUtils.insert;
@@ -37,6 +38,7 @@ import static org.alfasoftware.morf.sql.SqlUtils.selectFirst;
 import static org.alfasoftware.morf.sql.SqlUtils.tableRef;
 import static org.alfasoftware.morf.sql.SqlUtils.truncate;
 import static org.alfasoftware.morf.sql.SqlUtils.update;
+import static org.alfasoftware.morf.sql.SqlUtils.when;
 import static org.alfasoftware.morf.sql.SqlUtils.windowFunction;
 import static org.alfasoftware.morf.sql.element.Criterion.and;
 import static org.alfasoftware.morf.sql.element.Criterion.eq;
@@ -48,6 +50,7 @@ import static org.alfasoftware.morf.sql.element.Function.average;
 import static org.alfasoftware.morf.sql.element.Function.coalesce;
 import static org.alfasoftware.morf.sql.element.Function.count;
 import static org.alfasoftware.morf.sql.element.Function.daysBetween;
+import static org.alfasoftware.morf.sql.element.Function.every;
 import static org.alfasoftware.morf.sql.element.Function.floor;
 import static org.alfasoftware.morf.sql.element.Function.leftPad;
 import static org.alfasoftware.morf.sql.element.Function.leftTrim;
@@ -60,10 +63,12 @@ import static org.alfasoftware.morf.sql.element.Function.power;
 import static org.alfasoftware.morf.sql.element.Function.random;
 import static org.alfasoftware.morf.sql.element.Function.randomString;
 import static org.alfasoftware.morf.sql.element.Function.rightTrim;
+import static org.alfasoftware.morf.sql.element.Function.some;
 import static org.alfasoftware.morf.sql.element.Function.substring;
 import static org.alfasoftware.morf.sql.element.Function.sum;
 import static org.alfasoftware.morf.sql.element.Function.yyyymmddToDate;
 import static org.alfasoftware.morf.sql.element.MathsOperator.MINUS;
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
@@ -114,9 +119,11 @@ import org.alfasoftware.morf.sql.InsertStatement;
 import org.alfasoftware.morf.sql.MergeStatement;
 import org.alfasoftware.morf.sql.SelectFirstStatement;
 import org.alfasoftware.morf.sql.SelectStatement;
+import org.alfasoftware.morf.sql.SqlUtils;
 import org.alfasoftware.morf.sql.TruncateStatement;
 import org.alfasoftware.morf.sql.UpdateStatement;
 import org.alfasoftware.morf.sql.element.AliasedField;
+import org.alfasoftware.morf.sql.element.CaseStatement;
 import org.alfasoftware.morf.sql.element.Cast;
 import org.alfasoftware.morf.sql.element.Criterion;
 import org.alfasoftware.morf.sql.element.FieldLiteral;
@@ -202,7 +209,8 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         column("decimalTenZeroCol", DataType.DECIMAL, 10),
         column("decimalNineFiveCol", DataType.DECIMAL, 9, 5),
         column("bigIntegerCol", DataType.BIG_INTEGER, 19),
-        column("nullableBigIntegerCol", DataType.BIG_INTEGER, 19).nullable()
+        column("nullableBigIntegerCol", DataType.BIG_INTEGER, 19).nullable(),
+        column("blobCol", DataType.BLOB, 19).nullable()
       ),
     table("DateTable")
       .columns(
@@ -226,6 +234,11 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         column("column1", DataType.BOOLEAN).nullable(),
         column("column2", DataType.BOOLEAN).nullable()
       ),
+    table("AccumulateBooleanTable")
+      .columns(
+        column("column1", DataType.BOOLEAN).nullable(),
+        column("column2", DataType.BOOLEAN).nullable()
+      ),
     table("LeftAndRightTrimTable")
       .columns(
         column("indexColumn", DataType.INTEGER).primaryKey(),
@@ -244,7 +257,8 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
     table("SelectFirstTable")
       .columns(
         column("field1", DataType.INTEGER),
-        column("field2", DataType.STRING, 30).nullable()
+        column("field2", DataType.STRING, 30).nullable(),
+        column("field3", DataType.INTEGER).nullable()
       ),
     table("AutoNumbered")
       .columns(
@@ -276,7 +290,8 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         column("autoNum", DataType.INTEGER).autoNumbered(101).primaryKey(),
         column("column1", DataType.INTEGER),
         column("column2", DataType.INTEGER),
-        column("column3", DataType.STRING, 10).nullable()
+        column("column3", DataType.STRING, 10).nullable(),
+        column("column4", DataType.STRING, 10).nullable()
       )
       .indexes(
         index("Index_1").columns("column1", "column2").unique()
@@ -364,6 +379,7 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         .setString("decimalNineFiveCol", "278.231")
         .setLong("bigIntegerCol", 1234567890123456L)
         .setLong("nullableBigIntegerCol", 56732L)
+        .setByteArray("blobCol", "hello world BLOB".getBytes())
     )
     .table("DateTable",
       record()
@@ -413,6 +429,14 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
     .table("BooleanTable",
       record()
         .setBoolean("column1", false)
+        .setBoolean("column2", true)
+    )
+    .table("AccumulateBooleanTable",
+      record()
+        .setBoolean("column1", false)
+        .setBoolean("column2", true),
+      record()
+        .setBoolean("column1", true)
         .setBoolean("column2", true)
     )
     .table("LeftAndRightTrimTable",
@@ -1032,7 +1056,8 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
       new FieldLiteral(9817236).as("decimalTenZeroCol"),
       new FieldLiteral(278.231).as("decimalNineFiveCol"),
       new FieldLiteral("1234567890123456", DataType.DECIMAL).as("bigIntegerCol"),
-      new FieldLiteral("56732", DataType.DECIMAL).as("nullableBigIntegerCol")
+      new FieldLiteral("56732", DataType.DECIMAL).as("nullableBigIntegerCol"),
+      nullLiteral().as("nullableBlobCol")
     ).from(simpleTypes)
     .where(whereStringCol)
     .groupBy(field("stringCol"))
@@ -2068,6 +2093,35 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
 
 
   /**
+   * Test behaviour of the length-of-blob function
+   *
+   * @throws SQLException
+   */
+  @Test
+  public void testBlobLength() throws SQLException {
+    // Key value
+    final byte[] value = "hello world BLOB".getBytes();
+
+    SqlScriptExecutor executor = sqlScriptExecutorProvider.get(new LoggingSqlScriptVisitor());
+    String sql = convertStatementToSQL(select(field("blobCol"), length(field("blobCol")).as("lengthResult"))
+                                                                        .from(tableRef("SimpleTypes"))
+                                                                        .orderBy(field("lengthResult")));
+
+    executor.executeQuery(sql, connection, new ResultSetProcessor<Void>(){
+      @Override
+      public Void process(ResultSet resultSet) throws SQLException {
+        while (resultSet.next()) {
+          assertArrayEquals(value, resultSet.getBytes(1));
+          assertEquals(value.length, resultSet.getInt(2));
+        }
+        return null;
+      }
+
+    });
+  }
+
+
+  /**
    * Test behaviour of the MOD function
    *
    * @throws SQLException
@@ -2226,21 +2280,22 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
           select(
             parameter("column1").type(DataType.INTEGER),
             parameter("column2").type(DataType.INTEGER),
-            parameter("column3").type(DataType.STRING).width(0)
+            parameter("column3").type(DataType.STRING).width(0),
+            parameter("parameterValue").type(DataType.STRING).as("column4")
           )
         );
     NamedParameterPreparedStatement preparedStatement = NamedParameterPreparedStatement.parse(sqlDialect.convertStatementToSQL(merge)).createFor(connection);
     try {
 
       // Put in two records.  The first should merge with the initial data set.
-      preparedStatementRecord(sqlDialect, preparedStatement, 500, 800, "Correct");
-      preparedStatementRecord(sqlDialect, preparedStatement, 101, 201, "301");
+      preparedStatementRecord(sqlDialect, preparedStatement, 500, 800, "Correct", "Updated");
+      preparedStatementRecord(sqlDialect, preparedStatement, 101, 201, "301", "401");
       if (sqlDialect.useInsertBatching()) {
         preparedStatement.executeBatch();
       }
 
       // Check we have what we expect
-      SelectStatement statement = select(field("column1"), field("column2"), field("column3")).from(tableRef("MergeTableMultipleKeys")).orderBy(field("autoNum"));
+      SelectStatement statement = select(field("column1"), field("column2"), field("column3"), field("column4")).from(tableRef("MergeTableMultipleKeys")).orderBy(field("autoNum"));
       String sql = convertStatementToSQL(statement);
       sqlScriptExecutorProvider.get().executeQuery(sql, connection, new ResultSetProcessor<Void>() {
         @Override
@@ -2249,10 +2304,12 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
           assertEquals("Row 1 column 1", 500, resultSet.getInt(1));
           assertEquals("Row 1 column 2", 800, resultSet.getInt(2));
           assertEquals("Row 1 column 3", "Correct", resultSet.getString(3));
+          assertEquals("Row 1 column 4", "Updated", resultSet.getString(4));
           assertTrue("No record 2", resultSet.next());
           assertEquals("Row 2 column 1", 101, resultSet.getInt(1));
           assertEquals("Row 2 column 2", 201, resultSet.getInt(2));
           assertEquals("Row 2 column 3", "301", resultSet.getString(3));
+          assertEquals("Row 2 column 4", "401", resultSet.getString(4));
           assertFalse("Noo many records", resultSet.next());
           return null;
         }
@@ -2274,10 +2331,11 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
     SqlParameter column1 = parameter("column1").type(DataType.INTEGER);
     SqlParameter column2 = parameter("column2").type(DataType.INTEGER);
     SqlParameter column3 = parameter("column3").type(DataType.STRING).width(0);
+    AliasedField column4 = parameter("parameterValue").type(DataType.STRING).as("column4");
 
     SqlDialect sqlDialect = connectionResources.sqlDialect();
     UpdateStatement update = update(tableRef("MergeTableMultipleKeys"))
-        .set(column2, column3)
+        .set(column2, column3, column4)
         .where(field("column1").eq(column1));
     ParseResult parsed = NamedParameterPreparedStatement.parse(sqlDialect.convertStatementToSQL(update));
 
@@ -2287,10 +2345,11 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
       preparedStatement.setInt(column1, 500)
                        .setInt(column2, 801)
                        .setString(column3, "Correct")
+                       .setString(parameter("parameterValue").type(DataType.STRING), "Updated")
                        .executeUpdate();
 
       // Check we have what we expect
-      SelectStatement statement = select(field("column1"), field("column2"), field("column3")).from(tableRef("MergeTableMultipleKeys")).orderBy(field("autoNum"));
+      SelectStatement statement = select(field("column1"), field("column2"), field("column3"), field("column4")).from(tableRef("MergeTableMultipleKeys")).orderBy(field("autoNum"));
       String sql = convertStatementToSQL(statement);
       sqlScriptExecutorProvider.get().executeQuery(sql, connection, new ResultSetProcessor<Void>() {
         @Override
@@ -2299,6 +2358,7 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
           assertEquals("Row 1 column 1", 500, resultSet.getInt(1));
           assertEquals("Row 1 column 2", 801, resultSet.getInt(2));
           assertEquals("Row 1 column 3", "Correct", resultSet.getString(3));
+          assertEquals("Row 1 column 4", "Updated", resultSet.getString(4));
           assertFalse("Noo many records", resultSet.next());
           return null;
         }
@@ -2317,8 +2377,10 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
   public void testParameterisedSelect() throws SQLException {
     SqlDialect sqlDialect = connectionResources.sqlDialect();
     SelectStatement select = select(
-          field("field1"), field("field2"), literal(":justtomesswithyou") // just to confuse it - should be treated
-                                                                          // as a string
+          field("field1"),
+          field("field2"),
+          literal(":justtomesswithyou"), // just to confuse it - should be treated as a string
+          parameter("param3").type(DataType.INTEGER).as("field3")
         )
         .from("SelectFirstTable")
         .where(field("field1").in(
@@ -2335,25 +2397,30 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         preparedStatement,
         ImmutableList.of(
           parameter("param1").type(INTEGER),
-          parameter("param2").type(INTEGER)
+          parameter("param2").type(INTEGER),
+          parameter("param3").type(INTEGER)
         ),
         DataSetUtils.statementParameters()
           .setInteger("param1", 1) // 1 + 1 = 2
           .setInteger("param2", 5)
+          .setInteger("param3", 7)
       );
       ResultSet resultSet = preparedStatement.executeQuery();
       assertTrue("No record 1", resultSet.next());
       assertEquals("Row 1 column 1", 2, resultSet.getInt(1));
       assertEquals("Row 1 column 2", 2, resultSet.getInt(2));
       assertEquals("Row 1 column 3", ":justtomesswithyou", resultSet.getString(3));
+      assertEquals("Row 1 column 4", 7, resultSet.getInt(4));
       assertTrue("No record 2", resultSet.next());
       assertEquals("Row 2 column 1", 2, resultSet.getInt(1));
       assertEquals("Row 2 column 2", 3, resultSet.getInt(2));
       assertEquals("Row 2 column 3", ":justtomesswithyou", resultSet.getString(3));
+      assertEquals("Row 2 column 4", 7, resultSet.getInt(4));
       assertTrue("No record 3", resultSet.next());
       assertEquals("Row 3 column 1", 5, resultSet.getInt(1));
       assertEquals("Row 3 column 2", 4, resultSet.getInt(2));
       assertEquals("Row 3 column 3", ":justtomesswithyou", resultSet.getString(3));
+      assertEquals("Row 3 column 4", 7, resultSet.getInt(4));
       assertFalse("Noo many records", resultSet.next());
     } finally {
       preparedStatement.close();
@@ -2361,18 +2428,20 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
   }
 
 
-  private void preparedStatementRecord(SqlDialect sqlDialect, NamedParameterPreparedStatement preparedStatement, Integer col1Value, Integer col2Value, String col3Value) throws SQLException {
+  private void preparedStatementRecord(SqlDialect sqlDialect, NamedParameterPreparedStatement preparedStatement, Integer col1Value, Integer col2Value, String col3Value, String col4Value) throws SQLException {
     sqlDialect.prepareStatementParameters(
       preparedStatement,
       ImmutableList.of(
         parameter("column1").type(INTEGER),
         parameter("column2").type(INTEGER),
-        parameter("column3").type(STRING)
+        parameter("column3").type(STRING),
+        parameter("parameterValue").type(STRING)
       ),
       DataSetUtils.statementParameters()
         .setInteger("column1", col1Value)
         .setInteger("column2", col2Value)
         .setString("column3", col3Value)
+        .setString("parameterValue", col4Value)
     );
     if (sqlDialect.useInsertBatching()) {
       preparedStatement.addBatch();
@@ -2391,8 +2460,8 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
 
     SelectStatement testSelect = select(field("alfaDate1"), field("alfaDate2"), literal(123))
                                  .from(tableRef("DateTable")).where(eq(field("alfaDate1"), parameter("firstDateParam").type(DataType.BIG_INTEGER)));;
-    Iterable<SqlParameter> parameterMetadata = ImmutableList.of(parameter(column("firstDateParam", DataType.STRING)));
-    RecordBuilder parameterData = DataSetUtils.record().setString("firstDateParam", "20040609");
+    Iterable<SqlParameter> parameterMetadata = ImmutableList.of(parameter(column("firstDateParam", DataType.DECIMAL)));
+    RecordBuilder parameterData = DataSetUtils.record().setLong("firstDateParam", 20040609L);
     ResultSetProcessor<List<List<String>>> resultSetProcessor = new ResultSetProcessor<List<List<String>>>() {
       /**
        * Takes all rows and puts into two-dimension String array.
@@ -2969,6 +3038,74 @@ public class TestSqlStatements { //CHECKSTYLE:OFF
         .from(tableRef("WindowFunctionTable")),
 
       "7-30.3","7-30.3","7-30.3","7-30.3","7-30.3","7-30.3","7-30.3");
+  }
+
+
+  /**
+   * Tests behaviour of the Every function
+   */
+  @Test
+  public void testEveryFunction() {
+    SelectStatement selectEvery =
+        select(
+          every(field("column1")).as("column1Every"),
+          every(field("column2")).as("column2Every"))
+        .from("AccumulateBooleanTable");
+    sqlScriptExecutorProvider.get().executeQuery(selectEvery).processWith(new ResultSetProcessor<Void>() {
+      @Override
+      public Void process(ResultSet resultSet) throws SQLException {
+        while (resultSet.next()) {
+          assertEquals("Aggregated Every value of column1 should be", false, resultSet.getBoolean(1));
+          assertEquals("Aggregated Every value of column2 should be", true, resultSet.getBoolean(2));
+        }
+        return null;
+      }
+    });
+  }
+
+
+  /**
+   * Tests behaviour of the Some function
+   */
+  @Test
+  public void testSomeFunction() {
+    SelectStatement selectSome =
+        select(
+          some(field("column1")).as("column1Every"),
+          some(field("column2")).as("column2Every"))
+        .from("AccumulateBooleanTable");
+    sqlScriptExecutorProvider.get().executeQuery(selectSome).processWith(new ResultSetProcessor<Void>() {
+      @Override
+      public Void process(ResultSet resultSet) throws SQLException {
+        while (resultSet.next()) {
+          assertEquals("Aggregated Some value of column1 should be", true, resultSet.getBoolean(1));
+          assertEquals("Aggregated Some value of column2 should be", true, resultSet.getBoolean(2));
+        }
+        return null;
+      }
+    });
+  }
+
+
+  /**
+   * Tests behaviour of Some function with a case statement as the argument.
+   */
+  @Test
+  public void testSomeFunctionWithACaseStatement() {
+    CaseStatement caseStmt = SqlUtils.caseStatement(
+      when(cast(field("id")).asType(INTEGER).lessThanOrEqualTo(literal(1))).then(true))
+        .otherwise(false);
+    SelectStatement selectComplexSome = select(some(caseStmt), every(caseStmt)).from(tableRef("WithDefaultValue"));
+    sqlScriptExecutorProvider.get().executeQuery(selectComplexSome).processWith(new ResultSetProcessor<Void>() {
+      @Override
+      public Void process(ResultSet resultSet) throws SQLException {
+        while (resultSet.next()) {
+        assertEquals("Aggregated value of id should be", true, resultSet.getBoolean(1));
+        assertEquals("Aggregated value of id should be", false, resultSet.getBoolean(2));
+      }
+      return null;
+      }
+    });
   }
 
 

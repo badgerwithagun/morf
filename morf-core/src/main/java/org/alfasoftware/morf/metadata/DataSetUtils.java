@@ -17,6 +17,7 @@ package org.alfasoftware.morf.metadata;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
 
@@ -24,6 +25,7 @@ import org.alfasoftware.morf.dataset.DataSetProducer;
 import org.alfasoftware.morf.dataset.Record;
 import org.joda.time.LocalDate;
 
+import com.google.common.base.Preconditions;
 import com.google.inject.spi.TypeConverter;
 
 
@@ -385,15 +387,19 @@ public final class DataSetUtils {
     };
   }
 
-
   /**
-   * Takes an existing record and adds additional or override values without
-   * copying or modifying the existing record, minimising the need for additional
-   * memory.
+   * Copies an existing record and allows the result to be modified. The
+   * original is not affected.
    */
-  public static class RecordDecorator extends RecordBuilderImpl {
+  public static final class RecordDecorator extends RecordBuilderImpl {
 
-    private final Record fallback;
+    /** The number of additional columns of space to reserve by default */
+    private static final int DEFAULT_CAPACITY = 8;
+
+    /**
+     * Not instantiatable.
+     */
+    private RecordDecorator() {}
 
     /**
      * Creates a new record decorator, which initially contains the values in
@@ -403,84 +409,35 @@ public final class DataSetUtils {
      * @return A new {@link RecordBuilder}.
      */
     public static RecordBuilder of(Record fallback) {
-      return new RecordDecorator(fallback);
+      return ofWithInitialCapacity(fallback, DEFAULT_CAPACITY);
     }
 
-    protected RecordDecorator(Record fallback) {
-      super();
-      this.fallback = fallback;
-    }
+    /**
+     * Creates a new record decorator, which initially contains the values in
+     * the fallback record, but allows values to be added or overridden.
+     *
+     * @param fallback The record to override.
+     * @param capacity The space to reserve for additional fields. Functions
+     *    similarly to {@link ArrayList#ArrayList(int)} in that if the resulting
+     *    content overruns this size, the reserved memory will be expanded, but
+     *    by reserving sufficient capacity unfront, unnecessary resizing can
+     *    be avoided.
+     * @return A new {@link RecordBuilder}.
+     */
+    public static RecordBuilder ofWithInitialCapacity(Record fallback, int capacity) {
 
-    @SuppressWarnings("deprecation")
-    @Override
-    public String getValue(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.stringValue(o)) : fallback.getValue(name);
-    }
+      Preconditions.checkNotNull(fallback, "Fallback may not be null");
+      Preconditions.checkArgument(capacity >= 0, "Capacity must be zero or positive");
 
-    @Override
-    public BigDecimal getBigDecimal(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.bigDecimalValue(o)) : fallback.getBigDecimal(name);
-    }
-
-    @Override
-    public Boolean getBoolean(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.booleanValue(o)) : fallback.getBoolean(name);
-    }
-
-    @Override
-    public java.sql.Date getDate(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.dateValue(o)) : fallback.getDate(name);
-    }
-
-    @Override
-    public Double getDouble(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.doubleValue(o)) : fallback.getDouble(name);
-    }
-
-    @Override
-    public Integer getInteger(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.integerValue(o)) : fallback.getInteger(name);
-    }
-
-    @Override
-    public LocalDate getLocalDate(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.localDateValue(o)) : fallback.getLocalDate(name);
-    }
-
-    @Override
-    public Long getLong(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.longValue(o)) : fallback.getLong(name);
-    }
-
-    @Override
-    public byte[] getByteArray(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, ValueMapper.OBJECT_TO_BYTE_ARRAY) : fallback.getByteArray(name);
-    }
-
-    @Override
-    public Object getObject(Column column) {
-      int index = indexOf(column.getName());
-      return index > -1 ? super.getObject(column) : fallback.getObject(column);
-    }
-
-    @Override
-    public String getString(String name) {
-      int index = indexOf(name);
-      return index > -1 ? getAndConvertByIndex(index, (o, c) -> c.stringValue(o)) : fallback.getString(name);
-    }
-
-    @Override
-    public String toString() {
-      return fallback.toString() + " + " + super.toString();
+      if (fallback instanceof DataValueLookupBuilderImpl) {
+        // Copy the builder if we can
+        return new RecordBuilderImpl((DataValueLookupBuilderImpl) fallback, capacity);
+      } else {
+        // Otherwise fallback to the API
+        RecordBuilderImpl result = new RecordBuilderImpl();
+        fallback.getValues().forEach(dv -> result.setObject(dv.getName().toString(), dv.getObject()));
+        return result;
+      }
     }
   }
 }

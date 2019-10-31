@@ -795,7 +795,17 @@ public class TestSqlServerDialect extends AbstractSqlDialectTest {
   protected List<String> expectedAlterColumnRenamingAndChangingNullability() {
     return Arrays.asList(
       "EXEC sp_rename 'TESTSCHEMA.Other.floatField', 'blahField', 'COLUMN'",
-        "ALTER TABLE TESTSCHEMA.Other ALTER COLUMN blahField NUMERIC(20,3)");
+      "ALTER TABLE TESTSCHEMA.Other ALTER COLUMN blahField NUMERIC(20,3)");
+  }
+
+
+  /**
+   * @see org.alfasoftware.morf.jdbc.AbstractSqlDialectTest#expectedAlterColumnChangingLengthAndCase()
+   */
+  @Override
+  protected List<String> expectedAlterColumnChangingLengthAndCase() {
+    return Arrays.asList("EXEC sp_rename 'TESTSCHEMA.Other.floatField', 'FloatField', 'COLUMN'",
+      "ALTER TABLE TESTSCHEMA.Other ALTER COLUMN FloatField NUMERIC(20,3) NOT NULL");
   }
 
 
@@ -1236,4 +1246,31 @@ public class TestSqlServerDialect extends AbstractSqlDialectTest {
   protected Collection<String> expectedAnalyseTableSql() {
     return SqlDialect.NO_STATEMENTS;
   }
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndWhere(String value) {
+    return "DELETE TOP (1000) FROM " + tableName(TEST_TABLE) + " WHERE (Test.stringField = " + stringLiteralPrefix() + value + ")";
+  };
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitAndComplexWhere(String value1, String value2) {
+    return "DELETE TOP (1000) FROM " + tableName(TEST_TABLE) + " WHERE ((Test.stringField = " + stringLiteralPrefix() + value1 + ") OR (Test.stringField = " + stringLiteralPrefix() + value2 + "))";
+  };
+
+
+  /**
+   * @return The expected SQL for a delete statement with a limit and where criterion.
+   */
+  @Override
+  protected String expectedDeleteWithLimitWithoutWhere() {
+    return "DELETE TOP (1000) FROM " + tableName(TEST_TABLE);
+  };
 }

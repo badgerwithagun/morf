@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 import org.alfasoftware.morf.jdbc.DatabaseType;
 import org.alfasoftware.morf.jdbc.NamedParameterPreparedStatement;
@@ -45,8 +46,10 @@ import org.alfasoftware.morf.sql.OptimiseForRowCount;
 import org.alfasoftware.morf.sql.ParallelQueryHint;
 import org.alfasoftware.morf.sql.SelectFirstStatement;
 import org.alfasoftware.morf.sql.SelectStatement;
+import org.alfasoftware.morf.sql.UpdateStatement;
 import org.alfasoftware.morf.sql.UseImplicitJoinOrder;
 import org.alfasoftware.morf.sql.UseIndex;
+import org.alfasoftware.morf.sql.UseParallelDml;
 import org.alfasoftware.morf.sql.element.AliasedField;
 import org.alfasoftware.morf.sql.element.ConcatenatedField;
 import org.alfasoftware.morf.sql.element.FieldReference;
@@ -805,7 +808,7 @@ class OracleDialect extends SqlDialect {
       }
     }
 
-    if (!newColumn.getName().equals(oldColumn.getName())) {
+    if (!newColumn.getName().equalsIgnoreCase(oldColumn.getName())) {
       result.add("ALTER TABLE " + schemaNamePrefix() + truncatedTableName + " RENAME COLUMN " + oldColumn.getName() + " TO " + newColumn.getName());
     }
 
@@ -1153,7 +1156,7 @@ class OracleDialect extends SqlDialect {
         .append(convertStatementToSQL(selectStatement))
         .toString()
       );
-    result.add("ALTER TABLE " + qualifiedTableName(table) + " NOPARALLEL LOGGING");
+    result.add("ALTER TABLE " + schemaNamePrefix() + table.getName()  + " NOPARALLEL LOGGING");
 
     if (!primaryKeysForTable(table).isEmpty()) {
       result.add("ALTER INDEX " + schemaNamePrefix() + primaryKeyConstraintName(table.getName()) + " NOPARALLEL LOGGING");
@@ -1330,6 +1333,20 @@ class OracleDialect extends SqlDialect {
 
 
   /**
+   * @see org.alfasoftware.morf.jdbc.SqlDialect#updateStatementPreTableDirectives(org.alfasoftware.morf.sql.UpdateStatement)
+   */
+  @Override
+  protected String updateStatementPreTableDirectives(UpdateStatement updateStatement) {
+    for (Hint hint : updateStatement.getHints()) {
+      if (hint instanceof UseParallelDml) {
+        return "/*+ ENABLE_PARALLEL_DML PARALLEL */ "; // only the single hint supported so return immediately
+      }
+    }
+    return "";
+  }
+
+
+  /**
    * @see org.alfasoftware.morf.jdbc.SqlDialect#rebuildTriggers(org.alfasoftware.morf.metadata.Table)
    */
   @Override
@@ -1387,5 +1404,14 @@ class OracleDialect extends SqlDialect {
                           + "tabname=>'" + table.getName() + "', "
                           + "cascade=>true, degree=>DBMS_STATS.AUTO_DEGREE, no_invalidate=>false); \n"
                    + "END;");
+  }
+
+
+  /**
+   * @see SqlDialect#getDeleteLimitWhereClause(int)
+   */
+  @Override
+  protected Optional<String> getDeleteLimitWhereClause(int limit) {
+    return Optional.of("ROWNUM <= " + limit);
   }
 }
