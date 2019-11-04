@@ -46,7 +46,7 @@
     <checkstyle.version>8.12</checkstyle.version>
 
     <!-- dependency versions -->
-    <commons-codec.version>1.9</commons-codec.version>
+    <commons-codec.version>1.13</commons-codec.version>
     <commons-io.version>2.0.1</commons-io.version>
     <commons-lang.version>2.6</commons-lang.version>
     <commons-logging.version>1.2</commons-logging.version>
